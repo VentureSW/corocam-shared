@@ -1,0 +1,104 @@
+// IR channel menu definition — docs/design/handoff_uv/IR_README.md "IR menu items"
+// table plus its three sub-columns (RADIOMETRY, ISOTHERM, ENVIRO). Handoff 3 of 3.
+//
+// Reuses handoff 1's item-shape types (NumberMenuItem/EnumMenuItem/SubMenuItem/
+// VisMenuItem) from ./visMenu — none of those were ever VIS-specific, they were just
+// introduced there first.
+//
+// NOT implemented: "IR's conditional presence in the channel cycle" (IR_README.md's
+// "Channel switching" — drop IR from the cycle when the camera doesn't report it
+// available). There is no confirmed protocol signal for that: commands.ts has no
+// "ir available"/hardware-presence command, only `ir_enable` (which toggles the
+// overlay's visibility, not whether the hardware exists).
+//
+// `command` mapping, against the protocol's commands.ts CC8HD dictionary:
+//   - irOpacity->ir_opacity, irMin->ir_tlo, irMax->ir_thi, irFocus->ir_focus,
+//     irPal->ir_palette, emis->ir_emis, rtemp->ir_trefl, gain->ir_gain,
+//     isoMin->iso_tlo, isoMax->iso_thi are confident direct name/semantic matches
+//     ("tlo"/"thi" = temperature low/high, the palette-stretch bounds; "trefl" =
+//     reflected temperature, i.e. REFL).
+//   - irRep->ir_tsel ("temperature select") and isoPal->iso_color are semantic
+//     best guesses — the only remaining unclaimed ir_*/iso_* registers and a
+//     plausible name match, but not as clean a match as the ones above. Confirm
+//     before shipping.
+//   - hist and isamp have NO confirmed command — no histogram or sample-count
+//     register exists anywhere in commands.ts (UV's `samp` hit the identical wall).
+//     isoOp likewise has no command: there is no `iso_opacity` entry in the table at
+//     all (only `ir_opacity`, shared by the base thermal layer, not the isotherm
+//     overlay). These three stay local-only (command: null) until confirmed against
+//     real hardware — same treatment as UV's li/nr/samp/trk.
+
+import type { EnumMenuItem, NumberMenuItem, VisMenuItem } from './visMenu';
+import { UV_ENV_ITEMS } from './uvMenu';
+
+export const IR_RADIOMETRY_ITEMS: readonly (NumberMenuItem | EnumMenuItem)[] = [
+  { key: 'hist', label: 'HIST', kind: 'enum', values: ['OFF', 'ON'], command: null },
+  { key: 'emis', label: 'EMIS', kind: 'number', min: 0.05, max: 1, step: 0.05, command: 'ir_emis' },
+  { key: 'isamp', label: 'SAMP', kind: 'number', min: 1, max: 10, step: 1, command: null },
+  { key: 'rtemp', label: 'REFL', kind: 'number', min: -50, max: 327, step: 1, unit: ' °C', command: 'ir_trefl' },
+  // The two labels carry their spans inline — see IR_README.md's RADIOMETRY section:
+  // switching this changes what irMin/irMax can mean, worth surfacing to the operator.
+  { key: 'gain', label: 'GAIN', kind: 'enum', values: ['LOW -20-160', 'HIGH 0-500'], command: 'ir_gain' },
+];
+
+export const IR_ISOTHERM_ITEMS: readonly (NumberMenuItem | EnumMenuItem)[] = [
+  { key: 'isoPal', label: 'PAL', kind: 'enum', values: ['RED', 'AMBER', 'GREEN', 'CYAN'], command: 'iso_color' },
+  { key: 'isoOp', label: 'OPAC', kind: 'number', min: 0, max: 100, step: 5, unit: '%', command: null },
+  { key: 'isoMin', label: 'MIN', kind: 'number', min: -199, max: 999, step: 5, unit: '°', command: 'iso_tlo' },
+  { key: 'isoMax', label: 'MAX', kind: 'number', min: -199, max: 999, step: 5, unit: '°', command: 'iso_thi' },
+];
+
+// Same three values as UV's ENV sub-menu — same keys, same ranges, same command:
+// they describe the site, not the channel, and are stored once (IR_README.md's
+// ENVIRO section). Filtering UV's own array (rather than re-declaring dist/hum/wind
+// here) guarantees that identity instead of relying on two literals staying in sync.
+const IR_ENV_KEYS: readonly string[] = ['dist', 'hum', 'wind'];
+export const IR_ENV_ITEMS: readonly NumberMenuItem[] = UV_ENV_ITEMS.filter(
+  (item): item is NumberMenuItem => item.kind === 'number' && IR_ENV_KEYS.includes(item.key)
+);
+
+export const IR_ITEMS: readonly VisMenuItem[] = [
+  { key: 'irOpacity', label: 'OPAC', kind: 'number', min: 20, max: 100, step: 5, unit: '%', command: 'ir_opacity' },
+  { key: 'irMin', label: 'MIN', kind: 'number', min: -200, max: 1000, step: 5, unit: '°', command: 'ir_tlo' },
+  { key: 'irMax', label: 'MAX', kind: 'number', min: -200, max: 1000, step: 5, unit: '°', command: 'ir_thi' },
+  { key: 'irFocus', label: 'FOCUS', kind: 'number', min: 0, max: 100, step: 5, unit: '%', command: 'ir_focus' },
+  {
+    key: 'irPal',
+    label: 'PAL',
+    kind: 'enum',
+    values: ['WHITE HOT', 'BLACK HOT', 'YELLOW HOT', 'IRONBOW', 'GLOWBOW', 'RAINBOW'],
+    command: 'ir_palette',
+  },
+  // Caption has an explicit line break, not left as one long word: ChannelMenu's
+  // subCaption Text doesn't reliably auto-wrap on Android at this column width/font
+  // size (confirmed on UV's "UV PALETTE", same 10-character length, which silently
+  // dropped its wrapped half instead of wrapping — see uvMenu.ts's uvPal item). A
+  // single unbroken 10-character word like "RADIOMETRY" has no space to wrap at
+  // regardless, so it's at least as much at risk.
+  { key: 'irAdv', label: 'RAD', kind: 'sub', caption: 'RADIO\nMETRY', items: IR_RADIOMETRY_ITEMS },
+  { key: 'iso', label: 'ISO', kind: 'sub', caption: 'ISOTHERM', items: IR_ISOTHERM_ITEMS },
+  { key: 'irEnv', label: 'ENV', kind: 'sub', caption: 'ENVIRO', items: IR_ENV_ITEMS },
+  { key: 'irRep', label: 'REPT', kind: 'enum', values: ['MAXIMUM', 'AVERAGE', 'MINIMUM'], command: 'ir_tsel' },
+];
+
+// Suggested starting values, matching docs/design/handoff_uv/IR_README.md — used
+// until (or unless) a real camera value arrives for items that have a command.
+// dist/hum/wind are deliberately absent: UV_DEFAULT_VALUES already carries them (see
+// IR_ENV_ITEMS above), and ChannelMenu.tsx merges every channel's defaults together.
+export const IR_DEFAULT_VALUES: Record<string, number> = {
+  irOpacity: 60,
+  irMin: 27,
+  irMax: 28,
+  irFocus: 50,
+  irPal: 3, // IRONBOW
+  irRep: 0, // MAXIMUM
+  hist: 0, // OFF
+  emis: 0.95,
+  isamp: 3,
+  rtemp: 22,
+  gain: 0, // LOW
+  isoPal: 0, // RED
+  isoOp: 100,
+  isoMin: 30,
+  isoMax: 60,
+};
