@@ -24,6 +24,19 @@ export interface NumberMenuItem {
   step: number;
   unit?: string;
   command: string | null;
+  /**
+   * Divides the raw value for display only, when the command's real raw
+   * register range isn't already the natural display unit (e.g. ISN's 0-999
+   * needs no conversion, but vis_opacity's 0-255 does to show a 0-100%
+   * label). min/max/step and the value actually sent to the camera always
+   * stay in raw terms - this never reverse-converts a display input back to
+   * raw (see docs/corocam-cc8-protocol.md's "Value scaling" section in the
+   * rodxa repo for the verified raw-ranged-control-display-only-conversion
+   * pattern this follows, and why reversing it was the actual bug: an item
+   * declaring min/max in display units meant a user could never command the
+   * camera past whatever fraction display-max/raw-max represents).
+   */
+  displayDivisor?: number;
 }
 
 export interface EnumMenuItem {
@@ -52,20 +65,41 @@ export const VIS_ENH_ITEMS: readonly EnumMenuItem[] = [
 ];
 
 export const VIS_ITEMS: readonly VisMenuItem[] = [
-  { key: 'visOpacity', label: 'OPAC', kind: 'number', min: 0, max: 100, step: 5, unit: '%', command: 'vis_opacity' },
+  // Raw range confirmed live against real hardware 2026-10-16 (cross-checked against
+  // the camera's own on-screen opacity readout: raw 66 -> camera OSD showed 26,
+  // 66/255=25.9%, matches): true range is 0-255 (8-bit), not 0-100 as this item
+  // previously declared. That bug meant the slider could only ever reach 100/255=39%
+  // real opacity at its "max" - see docs/corocam-cc8-protocol.md in rodxa.
+  { key: 'visOpacity', label: 'OPAC', kind: 'number', min: 0, max: 255, step: 13, unit: '%', displayDivisor: 2.55, command: 'vis_opacity' },
   { key: 'isn', label: 'ISN', kind: 'number', min: 0, max: 999, step: 1, command: 'ISN' },
-  { key: 'visFocus', label: 'FOCUS', kind: 'number', min: 0, max: 100, step: 5, unit: '%', command: 'visfocus' },
+  // Raw range already independently verified (docs/corocam-cc8-protocol.md's "Value
+  // scaling" section, rodxa repo) as 0-65535 (0x0000=far, 0xFFFF=near per the spec),
+  // not 0-100 as this item previously declared - same class of bug as visOpacity
+  // above, just not live-recalibrated this session since it was already confirmed.
+  { key: 'visFocus', label: 'FOCUS', kind: 'number', min: 0, max: 65535, step: 3277, unit: '%', displayDivisor: 655.35, command: 'visfocus' },
+  // NOT YET FIXED, deliberately: 'exposure' isn't in the official spec at all,
+  // and unlike vis_opacity/visFocus above, this item's small range (0-17) reads more
+  // like a genuine exposure-stop/index count than a mis-scaled percentage. The
+  // camera's observed raw value of 255 on one unit might mean "Auto" (a common
+  // sentinel in camera exposure settings) rather than confirming an 8-bit 0-255
+  // range the way vis_opacity's did. Needs its own live OSD cross-check (same method
+  // as visOpacity above) before touching - don't assume this is the same bug.
   { key: 'visExp', label: 'EXP', kind: 'number', min: 0, max: 17, step: 1, command: 'exposure' },
   { key: 'visEnh', label: 'ENH', kind: 'sub', caption: 'VIS ENH', items: VIS_ENH_ITEMS },
   { key: 'flash', label: 'LAMP', kind: 'number', min: 10, max: 100, step: 10, unit: '%', command: null },
 ];
 
 // Suggested starting values, matching the design prototype — used until (or unless)
-// a real camera value arrives for items that have a command.
+// a real camera value arrives for items that have a command. Re-expressed in raw
+// terms for visOpacity/visFocus 2026-10-16 (see VIS_ITEMS above) to preserve their
+// original *displayed* intent (visOpacity "100%" i.e. fully opaque, visFocus "55%")
+// now that min/max/the sent value are raw, not the old (wrong) 0-100 scale - a
+// consumer still sending the old raw 100/55 here would silently regress to the same
+// under-range bug the item fix above just corrected.
 export const VIS_DEFAULT_VALUES: Record<string, number> = {
-  visOpacity: 100,
+  visOpacity: 255, // was 100 (raw, wrong range) - 100% display is now raw 255
   isn: 12,
-  visFocus: 55,
+  visFocus: 36044, // was 55 (raw, wrong range) - 55% display is now raw round(55 * 655.35)
   visExp: 8,
   flash: 50,
   wdr: 0,
@@ -82,7 +116,14 @@ export function formatItemValue(item: NumberMenuItem | EnumMenuItem, value: numb
   if (item.kind === 'enum') {
     return item.values[value] ?? item.values[0];
   }
-  const formatted = item.step < 1 ? value.toFixed(2) : String(value);
+  // displayDivisor items (e.g. visOpacity: raw 0-255 -> displayed 0-100%) round to a
+  // whole number - matches the camera's own on-screen readout, confirmed integer
+  // (raw 66 showed as OSD "26", not "25.88") when this was added.
+  const formatted = item.displayDivisor
+    ? String(Math.round(value / item.displayDivisor))
+    : item.step < 1
+      ? value.toFixed(2)
+      : String(value);
   return `${formatted}${item.unit ?? ''}`;
 }
 
