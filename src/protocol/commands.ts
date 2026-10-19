@@ -247,6 +247,7 @@ export function getCommandByName(name: string): CommandDef {
 // lose precision decoded as a plain JS number).
 export const STARTUP_COMMAND_NAMES: readonly string[] = [
   'vzoom',
+  'fmode',
   // VIS menu
   'vis_opacity',
   'ISN',
