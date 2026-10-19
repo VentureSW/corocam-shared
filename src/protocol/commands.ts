@@ -159,7 +159,9 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   UVThr: 'UV channel threshold above which the UV overlay activates, usable range 0x10-0xEB.',
   UVxgain: 'Digital gain of the UV channel, 0x0002-0x03FF (0-100%).',
   UVCount: 'Read-only: the UV detection counter.',
-  ROI: 'UV region-of-interest window size: 0=medium, 1=small, 2=large.',
+  // Corrected 2026-10-19: live-tested against a real CoroCam7 (model 7300) and the
+  // "Sampler Size" manual page - not the 3-value enum this used to claim.
+  ROI: 'UV region-of-interest (sampler) window size, 1-10 (manual-documented range; the camera accepted values outside it too in testing).',
   LL: 'Low Light mode on the visible channel — desaturates the image for better contrast in low light.',
   BL: 'Backlight compensation on the visible channel — dims bright backgrounds to reveal darker foreground detail.',
   DF: 'Defog mode on the visible channel — sharpens the image in hazy conditions.',

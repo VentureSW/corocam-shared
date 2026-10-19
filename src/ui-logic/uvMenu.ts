@@ -13,14 +13,22 @@
 //   - nsb->uvfilter is a confident semantic match: reference/manual-text.txt
 //     describes it as literally "toggles the solar blind filter position," and its
 //     0/1 raw values line up with the manual's "0 (Solar Blind), 1 (Non Solar Blind)".
-//   - li, nr, samp and trk have NO confirmed command. The only unclaimed UV registers
+//   - samp->ROI confirmed 2026-10-19: live against a real CoroCam7 (model 7300) via
+//     src/api's /debug console, SET ROI round-tripped cleanly across 1-10 (and beyond -
+//     the camera didn't reject 0, 11 or 12 either, so the 1-10 range here is the
+//     documented one, not a hard device-enforced limit). commands.ts's own ROI
+//     description ("0=medium, 1=small, 2=large") turned out to be wrong/outdated - a
+//     continuous 1-10 size, matching the manual's "Sampler Size" page, is what's
+//     actually live. The manual also describes a SELECT/SET press that jumps straight
+//     to full screen - not implemented here, since which raw value that corresponds to
+//     (0? something outside 1-10?) hasn't been confirmed yet.
+//   - li, nr and trk still have NO confirmed command. The only unclaimed UV registers
 //     left in commands.ts (uvalpha, UVNUC, UVxgain, UVCount) don't name- or
-//     manual-match any of the four (UVNUC is Non-Uniformity Correction, a distinct
+//     manual-match any of the three (UVNUC is Non-Uniformity Correction, a distinct
 //     feature the manual lists separately from Long Integration/Noise Reduction), and
-//     UVCount is GET-only (commandQueue.ts throws on SET) so it can't be samp even by
-//     name similarity. These four stay local-only (command: null) until confirmed
-//     against real hardware — same treatment as flash/LAMP in handoff 1. Confirm
-//     before shipping.
+//     UVCount is GET-only (commandQueue.ts throws on SET). These three stay local-only
+//     (command: null) until confirmed against real hardware — same treatment as
+//     flash/LAMP in handoff 1. Confirm before shipping.
 
 import type { EnumMenuItem, NumberMenuItem, VisMenuItem } from './visMenu';
 
@@ -38,7 +46,7 @@ export const UV_PALETTE_ITEMS: readonly (NumberMenuItem | EnumMenuItem)[] = [
 export const UV_ADV_ITEMS: readonly (NumberMenuItem | EnumMenuItem)[] = [
   { key: 'li', label: 'LI', kind: 'number', min: 1, max: 32, step: 1, unit: ' FR', command: null },
   { key: 'nr', label: 'NR', kind: 'number', min: 0, max: 7, step: 1, command: null },
-  { key: 'samp', label: 'SAMP', kind: 'number', min: 1, max: 10, step: 1, command: null },
+  { key: 'samp', label: 'SAMP', kind: 'number', min: 1, max: 10, step: 1, command: 'ROI' },
   { key: 'thr', label: 'THR', kind: 'number', min: 0, max: 100, step: 5, unit: '%', command: 'UVThr' },
   { key: 'trk', label: 'TRACK', kind: 'enum', values: ['OFF', 'ON'], command: null },
   { key: 'nsb', label: 'NSB', kind: 'enum', values: ['SOLAR BLIND', 'NON SB'], command: 'uvfilter' },
