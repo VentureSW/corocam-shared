@@ -65,11 +65,16 @@ export const VIS_ENH_ITEMS: readonly EnumMenuItem[] = [
 ];
 
 export const VIS_ITEMS: readonly VisMenuItem[] = [
-  // Raw range confirmed live against real hardware 2026-10-16 (cross-checked against
-  // the camera's own on-screen opacity readout: raw 66 -> camera OSD showed 26,
-  // 66/255=25.9%, matches): true range is 0-255 (8-bit), not 0-100 as this item
-  // previously declared. That bug meant the slider could only ever reach 100/255=39%
-  // real opacity at its "max" - see docs/corocam-cc8-protocol.md in rodxa.
+  // Range-wise 0-255 is correct (confirmed live against the camera's own on-screen
+  // opacity readout: raw 66 -> OSD showed 26, 66/255=25.9%). Whether it's actually
+  // graduated is NOT settled, though: further live testing found no observable
+  // difference across intermediate values, only 0 (VIS off) vs. any 1-255 (on) - but
+  // that's the user's own open question, deliberately not acted on yet ("needs to be
+  // verified later" / "to be decided later" - don't remove this item on the strength
+  // of a single test pass). A separate, additive long-press-while-VIS-is-active
+  // toggle (0/255) now also exists in each consuming app's ActiveChannelControl (or
+  // equivalent) as a quick on/off - it coexists with this slider, not a replacement
+  // for it.
   { key: 'visOpacity', label: 'OPAC', kind: 'number', min: 0, max: 255, step: 13, unit: '%', displayDivisor: 2.55, command: 'vis_opacity' },
   { key: 'isn', label: 'ISN', kind: 'number', min: 0, max: 999, step: 1, command: 'ISN' },
   // Raw range already independently verified (docs/corocam-cc8-protocol.md's "Value
