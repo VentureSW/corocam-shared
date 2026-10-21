@@ -16,6 +16,7 @@ import type { CommandResult } from './codec';
 import { CommandQueue, type SetJob } from './commandQueue';
 import { POLLED_COMMAND_NAMES, STARTUP_COMMAND_NAMES } from './commands';
 import { createCameraConnection } from './connection';
+import { decodeBlockFields, STARTUP_BLOCK_FIELDS } from './registers';
 import type { Transport, TransportFactory } from './transport';
 
 export interface ActivityEntry {
@@ -119,7 +120,27 @@ export const cameraMachine = setup({
     >(async ({ input }) => {
       const values: Record<string, CommandResult> = {};
       const failed: string[] = [];
+
+      // One bulk blockaddr=0 blockdata read replaces 25 of the individual GETs below -
+      // see STARTUP_BLOCK_FIELDS/docs/corocam-command-testing.md's `blockdata` entry for
+      // exactly which names and why not more (a confirmed NIOS firmware bug means only
+      // word 0-121 of SystemSettings_s is reachable at all this way, and 244 - not the
+      // source-predicted 248 - is the real bisected safe ceiling). This is a latency
+      // optimization, not something startup should ever hard-fail on - any failure here
+      // just falls through to the per-name loop fetching these same names individually,
+      // identical to how every other name already behaves.
+      try {
+        const bytes = await input.queue.readSettingsBlock(244);
+        const decoded = decodeBlockFields(bytes, STARTUP_BLOCK_FIELDS);
+        for (const [name, value] of Object.entries(decoded)) {
+          values[name] = { kind: 'int', value };
+        }
+      } catch {
+        // Fall through - the loop below fetches these individually instead.
+      }
+
       for (const name of STARTUP_COMMAND_NAMES) {
+        if (name in values) continue; // already filled by the block read above
         try {
           values[name] = await input.queue.get(name);
         } catch {

@@ -255,6 +255,81 @@ export const SYSTEM_STATUS_REGISTERS: Readonly<Record<string, number>> = {
   UVAutoNUC: 133, // seconds*2
 };
 
+// Command names (not register names) reachable via a single blockaddr=0 blockdata read
+// of SystemSettings_s, word-indexed - see docs/corocam-command-testing.md's `blockdata`
+// entry for the full story. Short version: command 72's arbitrary-offset addressing
+// works fine, but command 39 (blockdata) has a confirmed NIOS firmware bug - Baddr is
+// used for bounds-checking and auto-increment bookkeeping but never added to the actual
+// memcpy source pointer, so a read always starts at byte 0 of whichever struct is
+// selected, regardless of blockaddr. That means only word 0-99 is reachable at all within
+// the practical blocklen=200 ceiling (the real wire ceiling is 248; 200 leaves margin -
+// same doc entry). Everything in STARTUP_COMMAND_NAMES not listed here either isn't
+// confirmed to map into SystemSettings_s, lives in SystemStatus_s instead (unreachable
+// via blockdata regardless, same bug), or falls past word 99.
+//
+// `visfocus`/SonyFocus(89) looked mismatched on first live check (2026-10-21: block read
+// said 46899, visfocus's own GET said 7168) and was excluded - but re-verified correct
+// immediately after (both reads 18841). `blockaddr` was 0 both times, where the
+// blockaddr-ignoring bug documented elsewhere in this project is a no-op, so that bug
+// isn't the explanation; far more likely `fmode` was in AF mode at the time (confirmed
+// separately to be 1/AF during the first check), meaning visfocus is a live, continuously
+//-changing value while AF is engaged - two reads taken a few round-trips apart can
+// legitimately disagree without either address being wrong. Trusted now.
+export const STARTUP_BLOCK_FIELDS: Readonly<Record<string, number>> = {
+  serial: SYSTEM_SETTINGS_REGISTERS.SerialNo,
+  profile: SYSTEM_SETTINGS_REGISTERS.ProfileNo,
+  uvgain: SYSTEM_SETTINGS_REGISTERS.UVGain,
+  LL: SYSTEM_SETTINGS_REGISTERS.LL_On,
+  uvfilter: SYSTEM_SETTINGS_REGISTERS.UVFilterUp,
+  menu_opacity: SYSTEM_SETTINGS_REGISTERS.OSD_Alpha,
+  uvhue: SYSTEM_SETTINGS_REGISTERS.UVX_HUE,
+  ir_palette: SYSTEM_SETTINGS_REGISTERS.IRPalette,
+  ir_emis: SYSTEM_SETTINGS_REGISTERS.IREmiss,
+  uvfocus: SYSTEM_SETTINGS_REGISTERS.UVFocus,
+  env_dist: SYSTEM_SETTINGS_REGISTERS.Env, // Env[0] - see the array-spans-n-words convention above
+  env_humid: SYSTEM_SETTINGS_REGISTERS.Env + 1,
+  env_temp: SYSTEM_SETTINGS_REGISTERS.Env + 2,
+  env_pres: SYSTEM_SETTINGS_REGISTERS.Env + 3,
+  env_wind: SYSTEM_SETTINGS_REGISTERS.Env + 4,
+  ISN: SYSTEM_SETTINGS_REGISTERS.UserCount, // NOT SystemStatus_s's own, separate UserCount(85) - settings only
+  uvpalette: SYSTEM_SETTINGS_REGISTERS.UVColor,
+  UVThr: SYSTEM_SETTINGS_REGISTERS.UVC_THR, // resolves the old UVC_THR-vs-UVX_THR ambiguity - it's UVC_THR
+  visfocus: SYSTEM_SETTINGS_REGISTERS.SonyFocus,
+  // Added 2026-10-21 after bisecting the real safe blocklen ceiling (244, not the
+  // source-predicted 248 - see docs/corocam-command-testing.md's `blockdata` entry) and
+  // extending the read from word 0-99 to word 0-121. All six live-verified against
+  // their own named command's GET before being trusted here, same as every entry above.
+  ir_trefl: SYSTEM_SETTINGS_REGISTERS.TRefl,
+  gpsview: SYSTEM_SETTINGS_REGISTERS.ShowGPS,
+  // uv_opacity deliberately NOT mapped to UVFade here, despite commands.ts's own
+  // `// uv_fade` comment suggesting it - live-verified 2026-10-21 that UVFade actually
+  // backs `vis_opacity` instead (inverted: wire = 255 - stored; confirmed exactly,
+  // vis_opacity read 255 while decoded UVFade read 0). The commands.ts comment is a
+  // stale internal code-name, not proof of the current mapping. vis_opacity isn't added
+  // here either - decodeBlockFields has no per-field transform step, and bolting one on
+  // for a single inverted field isn't worth it yet. Both stay on individual GETs.
+  ir_gain: SYSTEM_SETTINGS_REGISTERS.IR_Gain,
+  ir_opacity: SYSTEM_SETTINGS_REGISTERS.IR_Alpha,
+  '60hz': SYSTEM_SETTINGS_REGISTERS.VS60Hz,
+};
+
+/**
+ * Decodes a blockdata byte array into named int values, given a name->word-index map
+ * (e.g. STARTUP_BLOCK_FIELDS). Word N is byte 2N, little-endian, matching every other
+ * register read in this file.
+ */
+export function decodeBlockFields(
+  bytes: readonly number[],
+  fields: Readonly<Record<string, number>>
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [name, wordIndex] of Object.entries(fields)) {
+    const byteIndex = wordIndex * 2;
+    out[name] = (bytes[byteIndex] ?? 0) | ((bytes[byteIndex + 1] ?? 0) << 8);
+  }
+  return out;
+}
+
 /** Added to a SYSTEM_STATUS_REGISTERS entry to get its real register address. */
 export const SYSTEM_STATUS_ADDRESS_OFFSET = 0x2000;
 

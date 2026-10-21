@@ -152,6 +152,28 @@ export class CommandQueue {
     return this.writeRegister('IR_Fahrenheit', unit === 'F' ? 1 : 0);
   }
 
+  /**
+   * Reads raw bytes from SystemSettings_s via blockdata (command 39) - always starting
+   * at byte 0, regardless of what blockaddr is set to: a confirmed NIOS firmware bug
+   * means Baddr is never added to the copy source pointer, so arbitrary-offset reads
+   * don't work on this firmware (see docs/corocam-command-testing.md's `blockdata`
+   * entry). `blocklen` is capped by the caller; 200 is the proven-safe practical ceiling
+   * used by STARTUP_BLOCK_FIELDS (the real wire ceiling is 248, confirmed from source -
+   * 200 leaves real margin rather than chasing the exact edge). SETs blockaddr=0
+   * explicitly every time rather than assuming it's already 0 - an earlier test session
+   * left it nonzero, and this queue has no way to know what state a previous session (or
+   * another client) left it in.
+   */
+  async readSettingsBlock(blocklen: number): Promise<number[]> {
+    await this.set('blockaddr', 0);
+    await this.set('blocklen', blocklen);
+    const result = await this.get('blockdata');
+    if (result.kind !== 'data') {
+      throw new Error(`blockdata: unexpected result kind "${result.kind}"`);
+    }
+    return result.value;
+  }
+
   private resolveRegisterAddress(addressOrName: number | string): number {
     if (typeof addressOrName === 'number') return addressOrName;
     const address = getRegisterAddress(addressOrName);
