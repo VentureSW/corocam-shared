@@ -5,6 +5,11 @@
 //   SEQ     = rolling 0-255 counter, owned by the caller (see commandQueue.ts)
 //   CHECKSUM = XOR of every preceding byte
 //
+// A GET's ARGS is empty for every command except read_register (commands.ts id 72),
+// which sends its 2-byte register address as the GET's own request argument — nothing
+// in this wire format actually forbids a GET from carrying args, every other command
+// just never needs to. See CommandQueue.get's optional `args` param.
+//
 // Originally ported from mod/cc8hdprotocol.py (MakeCmdPkt/CalcCrc/StripHdrPkt/GetPktArgs).
 
 import type { RawPacket } from './types';

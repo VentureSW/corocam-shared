@@ -16,6 +16,12 @@ export { PacketFramer, FramingDesyncError } from './frameReader';
 export type { CommandResult } from './codec';
 export { decodeResult, encodeArgs } from './codec';
 export { COMMANDS, COMMANDS_BY_NAME, getCommandByName, STARTUP_COMMAND_NAMES, POLLED_COMMAND_NAMES } from './commands';
+export {
+  SYSTEM_SETTINGS_REGISTERS,
+  SYSTEM_STATUS_REGISTERS,
+  SYSTEM_STATUS_ADDRESS_OFFSET,
+  getRegisterAddress,
+} from './registers';
 export type { Transport, TransportOptions, TransportFactory } from './transport';
 export type { SetJob, CommandQueueOptions } from './commandQueue';
 export { CommandQueue } from './commandQueue';

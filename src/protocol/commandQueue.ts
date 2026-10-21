@@ -11,12 +11,20 @@
 
 import { decodeResult, encodeArgs, type CommandResult } from './codec';
 import { getCommandByName } from './commands';
-import { makeCommandPacket } from './packet';
+import { integerToLittleEndian, makeCommandPacket } from './packet';
+import { getRegisterAddress } from './registers';
 import type { CommandDef, RawPacket } from './types';
 
 interface GetJob {
   kind: 'get';
   name: string;
+  /**
+   * Raw argument bytes to send with the GET request itself. Every command except
+   * read_register sends none (see dispatch) — this only exists for read_register's
+   * 2-byte register address, which the wire protocol genuinely needs on the request
+   * side of a query. See CommandQueue.readRegister.
+   */
+  args?: readonly number[];
   resolve: (result: CommandResult) => void;
   reject: (err: Error) => void;
 }
@@ -81,7 +89,7 @@ export class CommandQueue {
     this.opts = opts;
   }
 
-  get(name: string): Promise<CommandResult> {
+  get(name: string, args?: readonly number[]): Promise<CommandResult> {
     return new Promise((resolve, reject) => {
       const def = this.resolveDef(name, reject);
       if (!def) return;
@@ -89,9 +97,68 @@ export class CommandQueue {
         reject(new Error(`Command "${name}" is not readable`));
         return;
       }
-      this.queue.push({ kind: 'get', name, resolve, reject });
+      this.queue.push({ kind: 'get', name, args, resolve, reject });
       this.pump();
     });
+  }
+
+  /**
+   * Reads one raw system register — command 72 (read_register), confirmed against the
+   * original Python reference (not the PDF spec, which only says "Query arbitrary system
+   * registers... not documented here"). Unlike every other GET, this one sends a 2-byte
+   * LE register address as its own request argument; the reply is the register's 2-byte
+   * value. Pass a number for a raw word-address, or a name from registers.ts
+   * (case-insensitive) to resolve one — see getRegisterAddress for how name collisions
+   * between the settings/status maps are resolved.
+   */
+  async readRegister(addressOrName: number | string): Promise<number> {
+    const address = this.resolveRegisterAddress(addressOrName);
+    const result = await this.get('read_register', integerToLittleEndian(address & 0xffff, 2));
+    if (result.kind !== 'int') {
+      throw new Error(`read_register: unexpected result kind "${result.kind}"`);
+    }
+    return result.value;
+  }
+
+  /**
+   * Writes one raw system register — command 72 (write_register). The wire argument
+   * packs two 2-byte LE fields into one 4-byte payload (address then value); encoding
+   * that as the single 32-bit number `address | (value << 16)` through the existing
+   * 4-byte int encodeArgs path produces the identical bytes, so this just reuses set()
+   * rather than needing a bespoke composite encoder. Fire-and-forget, like every other
+   * SET — no reply, no confirmation the write was applied.
+   */
+  writeRegister(addressOrName: number | string, value: number): Promise<void> {
+    const address = this.resolveRegisterAddress(addressOrName);
+    const packed = (address & 0xffff) | ((value & 0xffff) << 16);
+    return this.set('write_register', packed);
+  }
+
+  /**
+   * IR temperature display unit — register `IR_Fahrenheit` (settings, address 118, see
+   * registers.ts). Pure display-unit toggle on the camera's own OSD: every underlying
+   * temperature register (ir_tlo/ir_thi/env_temp/etc.) always stays in Celsius regardless
+   * of this setting (confirmed from docs/CC8/control.c and cc6-hd-nios's m81func.c, whose
+   * rendering sites all read Celsius then conditionally convert right before formatting).
+   * No numbered command reaches this - register-only, live-tested 2026-10-21 (read/write/
+   * read-back round-tripped cleanly, connection stayed healthy throughout).
+   */
+  async getTemperatureUnit(): Promise<'C' | 'F'> {
+    const raw = await this.readRegister('IR_Fahrenheit');
+    return raw ? 'F' : 'C';
+  }
+
+  setTemperatureUnit(unit: 'C' | 'F'): Promise<void> {
+    return this.writeRegister('IR_Fahrenheit', unit === 'F' ? 1 : 0);
+  }
+
+  private resolveRegisterAddress(addressOrName: number | string): number {
+    if (typeof addressOrName === 'number') return addressOrName;
+    const address = getRegisterAddress(addressOrName);
+    if (address === undefined) {
+      throw new Error(`Unknown register name: "${addressOrName}"`);
+    }
+    return address;
   }
 
   set(name: string, value?: number | string | readonly number[]): Promise<void> {
@@ -219,7 +286,7 @@ export class CommandQueue {
     };
     this.inFlight = req;
     try {
-      this.opts.send(makeCommandPacket(def.id, [], true, seq));
+      this.opts.send(makeCommandPacket(def.id, job.args ?? [], true, seq));
     } catch (err) {
       clearTimeout(req.timer);
       this.inFlight = null;

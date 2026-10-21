@@ -88,8 +88,16 @@ const RAW_COMMANDS: readonly RawRow[] = [
   [69, 'ir_values', 14, 0, 3],
   [70, 'echo', -1, 0, 0],
   [71, 'ucf_uvraw', 1, 0, 3],
+  // write_register's 4-byte arg packs two 2-byte LE fields: address then value
+  // (low 16 bits = address, high 16 bits = value, per encodeArgs's plain LE32 encoding —
+  // see CommandQueue.writeRegister). read_register's GET reply is a 2-byte value; unlike
+  // every other command, its GET request itself also carries an argument (the 2-byte
+  // register address) — see CommandQueue.get's optional `args` param and
+  // CommandQueue.readRegister. Both confirmed against the original Python reference
+  // (CC8_INTERFACE.py's read_register/change_network_config), not the PDF spec, which
+  // only says "Query arbitrary system registers... not documented here."
   [72, 'write_register', 4, 0, 2],
-  [72, 'read_register', 4, 0, 1],
+  [72, 'read_register', 2, 0, 1],
   [73, 'uem_distance', 2, 0, 3], // was quver
   [74, 'uem_status', 1, 0, 1], // was quver
   [75, 'uem_result', 4, 0, 1], // was quver
@@ -244,9 +252,10 @@ export function getCommandByName(name: string): CommandDef {
 // more state that needs the camera's real value on connect rather than a placeholder
 // default. Watch for: 'file'/'block'/'folder' commands (need a second unframed streaming
 // read, not implemented here), 'write'/'keys'/'qr'/'crc32' (excluded per the original
-// Python startup logic), 'read_register' (its GET needs a 2-byte register address
-// argument a bare query can't supply), and 'ir_values'/'roi_pos' (wide ints that would
-// lose precision decoded as a plain JS number).
+// Python startup logic), 'read_register' (CommandQueue.get now supports passing its
+// address argument, but a startup sweep has no single address to ask for — it's a
+// per-register accessor, not state with one canonical value), and 'ir_values'/'roi_pos'
+// (wide ints that would lose precision decoded as a plain JS number).
 export const STARTUP_COMMAND_NAMES: readonly string[] = [
   'vzoom',
   'fmode',
