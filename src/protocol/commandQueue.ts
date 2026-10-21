@@ -12,7 +12,7 @@
 import { decodeResult, encodeArgs, type CommandResult } from './codec';
 import { getCommandByName } from './commands';
 import { integerToLittleEndian, makeCommandPacket } from './packet';
-import { getRegisterAddress } from './registers';
+import { BLOCKDATA_STATUS_SELECT, getRegisterAddress } from './registers';
 import type { CommandDef, RawPacket } from './types';
 
 interface GetJob {
@@ -166,6 +166,21 @@ export class CommandQueue {
    */
   async readSettingsBlock(blocklen: number): Promise<number[]> {
     await this.set('blockaddr', 0);
+    await this.set('blocklen', blocklen);
+    const result = await this.get('blockdata');
+    if (result.kind !== 'data') {
+      throw new Error(`blockdata: unexpected result kind "${result.kind}"`);
+    }
+    return result.value;
+  }
+
+  /**
+   * Same as readSettingsBlock, but reads SystemStatus_s instead - blockdata's own
+   * address-space selector (BLOCKDATA_STATUS_SELECT, see registers.ts) is unrelated to
+   * read_register/write_register's +0x2000 status offset; don't conflate the two.
+   */
+  async readStatusBlock(blocklen: number): Promise<number[]> {
+    await this.set('blockaddr', BLOCKDATA_STATUS_SELECT);
     await this.set('blocklen', blocklen);
     const result = await this.get('blockdata');
     if (result.kind !== 'data') {

@@ -313,6 +313,38 @@ export const STARTUP_BLOCK_FIELDS: Readonly<Record<string, number>> = {
   '60hz': SYSTEM_SETTINGS_REGISTERS.VS60Hz,
 };
 
+// `blockdata`'s own, separate address-space selector (command 39 - unrelated to
+// read_register/write_register's +0x2000 status offset, which is command 72's own
+// convention): the upper 16 bits of the 32-bit `blockaddr` value select the struct via
+// their low bit (0 = SystemSettings_s, 1 = SystemStatus_s), live-confirmed 2026-10-21 -
+// blockaddr=0x10000 read back SystemStatus_s's own Version (1), distinct from
+// SystemSettings_s's (6). The same offset-ignoring bug applies here too (see
+// docs/corocam-command-testing.md): every read still starts at byte 0 of whichever
+// struct is selected, so this is a fixed base address, not a parameter.
+export const BLOCKDATA_STATUS_SELECT = 0x10000;
+
+// Command names reachable via one blockaddr=BLOCKDATA_STATUS_SELECT blockdata read of
+// SystemStatus_s, word-indexed - same shape as STARTUP_BLOCK_FIELDS above, just a
+// different struct and base address. blocklen=212 bisected safe live 2026-10-21 (same
+// careful one-step-at-a-time process as the Settings ceiling), covering word 0-105.
+//
+// `exposure`/SonyIris(78) needs a width correction the others don't: the wire command
+// is a single byte (0-255), but SonyIris is a full 16-bit word - normally invisible
+// (most values have a zero high byte either way), but exposed when the camera's in
+// AE/auto mode, which stores -1 (0xFFFF as a 16-bit word, truncating to 0xFF=255 as the
+// 8-bit wire value both represent "AE", live-confirmed exactly: exposure's own GET read
+// 255 while the decoded word read 65535). Decode it like every other field here, then
+// mask to the low byte at the call site before trusting it as `exposure`'s value.
+export const STARTUP_STATUS_BLOCK_FIELDS: Readonly<Record<string, number>> = {
+  ir_focus: SYSTEM_STATUS_REGISTERS.IR_Focus,
+  ir_tlo: SYSTEM_STATUS_REGISTERS.IRLow,
+  ir_thi: SYSTEM_STATUS_REGISTERS.IRHigh,
+  exposure: SYSTEM_STATUS_REGISTERS.SonyIris, // mask to & 0xff at the call site - see above
+  iso_color: SYSTEM_STATUS_REGISTERS.ISO_color,
+  iso_tlo: SYSTEM_STATUS_REGISTERS.ISO_low,
+  iso_thi: SYSTEM_STATUS_REGISTERS.ISO_high,
+};
+
 /**
  * Decodes a blockdata byte array into named int values, given a name->word-index map
  * (e.g. STARTUP_BLOCK_FIELDS). Word N is byte 2N, little-endian, matching every other
