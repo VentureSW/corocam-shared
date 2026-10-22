@@ -12,7 +12,13 @@
 import { decodeResult, encodeArgs, type CommandResult } from './codec';
 import { getCommandByName } from './commands';
 import { integerToLittleEndian, makeCommandPacket } from './packet';
-import { BLOCKDATA_STATUS_SELECT, getRegisterAddress } from './registers';
+import {
+  BLOCKDATA_STATUS_SELECT,
+  decodeBlockFields,
+  getRegisterAddress,
+  STARTUP_BLOCK_FIELDS,
+  STARTUP_STATUS_BLOCK_FIELDS,
+} from './registers';
 import type { CommandDef, RawPacket } from './types';
 
 interface GetJob {
@@ -187,6 +193,48 @@ export class CommandQueue {
       throw new Error(`blockdata: unexpected result kind "${result.kind}"`);
     }
     return result.value;
+  }
+
+  /**
+   * Fetches every block-readable startup value in one call: one bulk read of
+   * SystemSettings_s (readSettingsBlock(244)) plus one of SystemStatus_s
+   * (readStatusBlock(212)) - 6 round-trips total instead of one get() per name.
+   * Covers the 31 names in STARTUP_BLOCK_FIELDS/STARTUP_STATUS_BLOCK_FIELDS; see
+   * docs/corocam-command-testing.md's `blockdata` entry (rodxa repo) for why exactly
+   * these 31 and not more - a confirmed NIOS firmware bug caps what's reachable this
+   * way, both in which struct and how much of it.
+   *
+   * Each half is independently best-effort and this never throws: a failure in one
+   * doesn't lose the other, and any name missing from the result here (including all
+   * of them, if both halves failed) just means the caller should fall back to its own
+   * individual get() calls for that name - exactly what machine.ts's loadInitialSettings
+   * does, and the same pattern any other consumer of this queue should follow.
+   */
+  async getStartupBlockValues(): Promise<Record<string, CommandResult>> {
+    const values: Record<string, CommandResult> = {};
+
+    try {
+      const bytes = await this.readSettingsBlock(244);
+      for (const [name, value] of Object.entries(decodeBlockFields(bytes, STARTUP_BLOCK_FIELDS))) {
+        values[name] = { kind: 'int', value };
+      }
+    } catch {
+      // Best-effort - see doc comment above.
+    }
+
+    try {
+      const bytes = await this.readStatusBlock(212);
+      for (const [name, value] of Object.entries(decodeBlockFields(bytes, STARTUP_STATUS_BLOCK_FIELDS))) {
+        // exposure's wire value is 8-bit; SonyIris (the backing struct field) is a full
+        // 16-bit word - see STARTUP_STATUS_BLOCK_FIELDS's own comment for why this needs
+        // masking (invisible except at the AE/-1 sentinel, 0xFFFF vs 0xFF).
+        values[name] = { kind: 'int', value: name === 'exposure' ? value & 0xff : value };
+      }
+    } catch {
+      // Best-effort - see doc comment above.
+    }
+
+    return values;
   }
 
   private resolveRegisterAddress(addressOrName: number | string): number {

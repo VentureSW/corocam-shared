@@ -16,7 +16,6 @@ import type { CommandResult } from './codec';
 import { CommandQueue, type SetJob } from './commandQueue';
 import { POLLED_COMMAND_NAMES, STARTUP_COMMAND_NAMES } from './commands';
 import { createCameraConnection } from './connection';
-import { decodeBlockFields, STARTUP_BLOCK_FIELDS, STARTUP_STATUS_BLOCK_FIELDS } from './registers';
 import type { Transport, TransportFactory } from './transport';
 
 export interface ActivityEntry {
@@ -118,40 +117,15 @@ export const cameraMachine = setup({
       { values: Record<string, CommandResult>; failed: string[] },
       { queue: CommandQueue }
     >(async ({ input }) => {
-      const values: Record<string, CommandResult> = {};
-      const failed: string[] = [];
-
-      // One bulk blockaddr=0 blockdata read replaces 24 of the individual GETs below -
-      // see STARTUP_BLOCK_FIELDS/docs/corocam-command-testing.md's `blockdata` entry for
-      // exactly which names and why not more (a confirmed NIOS firmware bug means only
-      // word 0-121 of SystemSettings_s is reachable at all this way, and 244 - not the
-      // source-predicted 248 - is the real bisected safe ceiling). This is a latency
-      // optimization, not something startup should ever hard-fail on - any failure here
-      // just falls through to the per-name loop fetching these same names individually,
+      // getStartupBlockValues() covers 31 of the names below in 6 round-trips instead
+      // of 31 - see its own doc comment (commandQueue.ts) and
+      // docs/corocam-command-testing.md's `blockdata` entry (rodxa repo) for exactly
+      // which 31 and why not more. Never throws and is purely a latency optimization:
+      // whatever it doesn't cover (including everything, if it fails entirely) just
+      // falls through to the per-name loop below fetching those names individually,
       // identical to how every other name already behaves.
-      try {
-        const bytes = await input.queue.readSettingsBlock(244);
-        const decoded = decodeBlockFields(bytes, STARTUP_BLOCK_FIELDS);
-        for (const [name, value] of Object.entries(decoded)) {
-          values[name] = { kind: 'int', value };
-        }
-      } catch {
-        // Fall through - the loop below fetches these individually instead.
-      }
-
-      // A second bulk read, SystemStatus_s this time (BLOCKDATA_STATUS_SELECT), replaces
-      // 7 more. `exposure` needs its 16-bit decode masked to a byte - see
-      // STARTUP_STATUS_BLOCK_FIELDS's own comment for why (an AE sentinel value that
-      // only diverges from the 8-bit wire value at exactly -1/0xFFFF).
-      try {
-        const bytes = await input.queue.readStatusBlock(212);
-        const decoded = decodeBlockFields(bytes, STARTUP_STATUS_BLOCK_FIELDS);
-        for (const [name, value] of Object.entries(decoded)) {
-          values[name] = { kind: 'int', value: name === 'exposure' ? value & 0xff : value };
-        }
-      } catch {
-        // Fall through - the loop below fetches these individually instead.
-      }
+      const values: Record<string, CommandResult> = await input.queue.getStartupBlockValues();
+      const failed: string[] = [];
 
       for (const name of STARTUP_COMMAND_NAMES) {
         if (name in values) continue; // already filled by the block read above
