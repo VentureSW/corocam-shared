@@ -25,6 +25,14 @@ export interface NumberMenuItem {
   unit?: string;
   command: string | null;
   /**
+   * Set this instead of `command` when the item is backed by a raw named system
+   * register (command 72, read_register/write_register — see corocam-shared's
+   * registers.ts) rather than a dedicated numbered wire command. A consumer with no
+   * register-write capability wired up should just treat the item as display-only,
+   * the same way it already must for `command: null`.
+   */
+  register?: string;
+  /**
    * Divides the raw value for display only, when the command's real raw
    * register range isn't already the natural display unit (e.g. ISN's 0-999
    * needs no conversion, but vis_opacity's 0-255 does to show a 0-100%
@@ -45,6 +53,8 @@ export interface EnumMenuItem {
   kind: 'enum';
   values: readonly string[];
   command: string | null;
+  /** See NumberMenuItem's own `register` field — same meaning, same either/or with `command`. */
+  register?: string;
 }
 
 export interface SubMenuItem {

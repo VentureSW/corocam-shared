@@ -32,9 +32,29 @@ import type { EnumMenuItem, NumberMenuItem, VisMenuItem } from './visMenu';
 import { UV_ENV_ITEMS } from './uvMenu';
 
 export const IR_RADIOMETRY_ITEMS: readonly (NumberMenuItem | EnumMenuItem)[] = [
-  { key: 'hist', label: 'HIST', kind: 'enum', values: ['OFF', 'ON'], command: null },
+  // Wired 2026-10-22: no numbered command exists for this (confirmed - zero hits for
+  // "histogram" anywhere in the remote protocol spec), but the real CC8HD Manual
+  // ("ADVANCED RADIOMETRY TOOLS SUB MENU... Show temperature Histogram, Range: 0 (Off)
+  // -1 (On)") and corocam-shared's own named register map both independently point to
+  // the same place: `IR_Histogram` (SystemSettings word 129, command 72 read/write).
+  // Live-tested: reads back exactly what's written (0/1 round-trips cleanly) - a real
+  // register, not a no-op. Not visually confirmed on screen this round (no obvious
+  // change spotted across two screenshots a beat apart), so treat the *value* as
+  // confirmed wired, not yet the *visible effect*. Same volatility caveat as every
+  // other register write in this project: reverts on profile reload/reboot unless
+  // separately committed via savprof - not handled here.
+  { key: 'hist', label: 'HIST', kind: 'enum', values: ['OFF', 'ON'], command: null, register: 'IR_Histogram' },
   { key: 'emis', label: 'EMIS', kind: 'number', min: 0.05, max: 1, step: 0.05, command: 'ir_emis' },
-  { key: 'isamp', label: 'SAMP', kind: 'number', min: 1, max: 10, step: 1, command: null },
+  // Wired 2026-10-22 to the same 'ROI' command UV's own `samp` uses (commit
+  // 0496da3, corocam-shared) - not a name-similarity guess: the CC8HD Manual
+  // describes "Sampler Size... Range: 1-10... press SELECT/SET to set to full screen"
+  // with identical wording in both UV's and IR's own advanced-tools sub-menu pages,
+  // and this item's declared range (1-10) already matched UV's exactly before this
+  // change - strong evidence it's one shared sampler/ROI window across channels, the
+  // same pattern IR_ENV_ITEMS already uses (literally reusing UV_ENV_ITEMS). Not yet
+  // independently live-confirmed in an IR-specific session the way UV's was - if this
+  // and UV's SAMP ever appear to visibly disagree, that's the first thing to recheck.
+  { key: 'isamp', label: 'SAMP', kind: 'number', min: 1, max: 10, step: 1, command: 'ROI' },
   { key: 'rtemp', label: 'REFL', kind: 'number', min: -50, max: 327, step: 1, unit: ' °C', command: 'ir_trefl' },
   // The two labels carry their spans inline — see IR_README.md's RADIOMETRY section:
   // switching this changes what irMin/irMax can mean, worth surfacing to the operator.
