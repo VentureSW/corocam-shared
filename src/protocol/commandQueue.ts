@@ -163,9 +163,11 @@ export class CommandQueue {
    * at byte 0, regardless of what blockaddr is set to: a confirmed NIOS firmware bug
    * means Baddr is never added to the copy source pointer, so arbitrary-offset reads
    * don't work on this firmware (see docs/corocam-command-testing.md's `blockdata`
-   * entry). `blocklen` is capped by the caller; 200 is the proven-safe practical ceiling
-   * used by STARTUP_BLOCK_FIELDS (the real wire ceiling is 248, confirmed from source -
-   * 200 leaves real margin rather than chasing the exact edge). SETs blockaddr=0
+   * entry). `blocklen` is capped by the caller; 244 is the live-bisected safe ceiling
+   * used by STARTUP_BLOCK_FIELDS (the camera's own spec, CC8HD-Remote.pdf section 7.59,
+   * documents 248 bytes as the Ethernet/TCP-interface limit - 244 lands just under that,
+   * confirmed by stepping sizes up live rather than assumed from the spec number alone).
+   * SETs blockaddr=0
    * explicitly every time rather than assuming it's already 0 - an earlier test session
    * left it nonzero, and this queue has no way to know what state a previous session (or
    * another client) left it in.
