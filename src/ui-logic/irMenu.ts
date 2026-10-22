@@ -58,7 +58,19 @@ export const IR_ENV_ITEMS: readonly NumberMenuItem[] = UV_ENV_ITEMS.filter(
 );
 
 export const IR_ITEMS: readonly VisMenuItem[] = [
-  { key: 'irOpacity', label: 'OPAC', kind: 'number', min: 20, max: 100, step: 5, unit: '%', command: 'ir_opacity' },
+  // Range was wrong (declared 20-100, real raw range confirmed 0-255 via a live
+  // before/after comparison against the actual video - same class of bug visOpacity
+  // had, and the same "(8-bit)" wording in commands.ts's own description). Stepped
+  // ir_opacity through 50/100/150/200/255 while watching the IR feed: a clean,
+  // monotonic increase in how much the thermal palette covers the base image, with
+  // raw 100 (the old declared max) only barely past the 50 end of that range, nowhere
+  // near fully opaque - 255 was needed to fully hide the base layer. min/step/the
+  // previous suggested default below are rescaled by the same 2.55 (255/100) factor
+  // used for visOpacity's fix, to preserve their original intended display meaning
+  // (floor "20%", step "5%") now that min/max/the sent value are raw, not the old
+  // (wrong) 0-100 scale. The floor's own rationale (why 20% specifically) wasn't
+  // re-verified here, just proportionally carried over.
+  { key: 'irOpacity', label: 'OPAC', kind: 'number', min: 51, max: 255, step: 13, unit: '%', displayDivisor: 2.55, command: 'ir_opacity' },
   { key: 'irMin', label: 'MIN', kind: 'number', min: -200, max: 1000, step: 5, unit: '°', command: 'ir_tlo' },
   { key: 'irMax', label: 'MAX', kind: 'number', min: -200, max: 1000, step: 5, unit: '°', command: 'ir_thi' },
   { key: 'irFocus', label: 'FOCUS', kind: 'number', min: 0, max: 100, step: 5, unit: '%', command: 'ir_focus' },
@@ -86,7 +98,7 @@ export const IR_ITEMS: readonly VisMenuItem[] = [
 // dist/hum/wind are deliberately absent: UV_DEFAULT_VALUES already carries them (see
 // IR_ENV_ITEMS above), and ChannelMenu.tsx merges every channel's defaults together.
 export const IR_DEFAULT_VALUES: Record<string, number> = {
-  irOpacity: 60,
+  irOpacity: 153, // was 60 (raw, wrong range) - 60% display is now raw round(60 * 2.55)
   irMin: 27,
   irMax: 28,
   irFocus: 50,
