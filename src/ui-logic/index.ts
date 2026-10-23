@@ -18,4 +18,3 @@ export { IR_RADIOMETRY_ITEMS, IR_ISOTHERM_ITEMS, IR_ENV_ITEMS, IR_ITEMS, IR_DEFA
 export type { EmisTableEntry } from './emisTable';
 export { EMIS_TABLE } from './emisTable';
 export { REFERENCE_WIDTH, REFERENCE_HEIGHT, computeScale, s } from './scale';
-export { wordsToIpv4, ipv4ToWords } from './networkConfig';
