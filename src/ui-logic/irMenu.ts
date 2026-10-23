@@ -44,7 +44,24 @@ export const IR_RADIOMETRY_ITEMS: readonly (NumberMenuItem | EnumMenuItem)[] = [
   // other register write in this project: reverts on profile reload/reboot unless
   // separately committed via savprof - not handled here.
   { key: 'hist', label: 'HIST', kind: 'enum', values: ['OFF', 'ON'], command: null, register: 'IR_Histogram' },
-  { key: 'emis', label: 'EMIS', kind: 'number', min: 0.05, max: 1, step: 0.05, command: 'ir_emis' },
+  // Fixed 2026-10-23: the old declaration (min 0.05, max 1, step 0.05, no divisor) sent
+  // the fraction itself as the raw arg. packet.ts's integerToLittleEndian does `v & 0xff`
+  // on the way to bytes, which forces a ToInt32 truncation - any value below 1 (i.e.
+  // every normal EMIS setting except the very top of the range) silently truncated to
+  // raw 0 and never reached the camera. Live-confirmed on real hardware: watched the
+  // camera's own on-screen EMIS readout (its RAD menu, which independently shows the
+  // true current value) while stepping this - raw 1 visibly changed it, every value
+  // below 1 did nothing. Firmware confirms the real encoding two ways: PDF command 46
+  // ("argument is 8192 times the emissivity, 0x0000-0x2000") and control.c's own
+  // default `IREmiss = 7372; //0.9` plus the menu's own commit code
+  // (`SystemSettings.IREmiss = f * 8192`, m81menu.c:1688). Range/step/display corrected
+  // again the same day to match the camera's own menu declaration for this exact item
+  // (m81defs.c:98: `{vt_float, "0.90","0.05","1.0","0.01","%1.2f"}`) instead of an
+  // arbitrary percent framing - emissivity is conventionally read as a 0.00-1.00
+  // fraction (see the camera's own built-in material-emissivity reference table:
+  // "Aluminum Foil 0.040", "Asbestos board 0.960", etc.), not a percentage, and the
+  // camera's own min (0.05, not 0.00) is a deliberate floor, not the protocol's.
+  { key: 'emis', label: 'EMIS', kind: 'number', min: 410, max: 8192, step: 82, displayDivisor: 8192, displayDecimals: 2, command: 'ir_emis' },
   // Wired 2026-10-22 to the same 'ROI' command UV's own `samp` uses (commit
   // 0496da3, corocam-shared) - not a name-similarity guess: the CC8HD Manual
   // describes "Sampler Size... Range: 1-10... press SELECT/SET to set to full screen"

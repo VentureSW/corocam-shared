@@ -79,8 +79,31 @@ export const UV_ENV_ITEMS: readonly NumberMenuItem[] = [
 
 export const UV_ITEMS: readonly VisMenuItem[] = [
   { key: 'uvOpacity', label: 'OPAC', kind: 'number', min: 0, max: 100, step: 5, unit: '%', command: 'uv_opacity' },
-  { key: 'uvGain', label: 'GAIN', kind: 'number', min: 0, max: 100, step: 5, unit: '%', command: 'uvgain' },
-  { key: 'uvFocus', label: 'FOCUS', kind: 'number', min: 0, max: 100, step: 5, unit: '%', command: 'uvfocus' },
+  // Fixed 2026-10-23: same class of bug as irOpacity - the wire command bypasses the
+  // on-screen menu's own 0-100 -> raw*0xfff/100 scaling (mf_uv_gain, m81func.c) and
+  // writes straight to the raw register. Confirmed two ways: docs/corocam-cc8-protocol.md's
+  // already-existing value-scaling table (itself sourced from the older ble-53 app's
+  // controls.json id 7, "UV Gain": maxvalue 4095, conversiondx 40.75 - a long-production
+  // app's verified numbers, not a fresh derivation), AND independently from the live
+  // firmware source: remx2.c:374's explicit comment on the command handler itself,
+  // "/* 0 - 0xfff */" i.e. raw 0-4095, masked with `& 0xfff`. displayDivisor uses
+  // ble-53's 40.75 (not the simpler 4095/100=40.95) to match that verified source
+  // exactly. Default raw is control.c's firmware boot default UVGain = 0x0d99 (3481).
+  { key: 'uvGain', label: 'GAIN', kind: 'number', min: 0, max: 4095, step: 205, unit: '%', displayDivisor: 40.75, command: 'uvgain' },
+  // Fixed 2026-10-23: same bug as uvGain above. Also confirmed two ways: ble-53's
+  // controls.json id 11 ("UV Focus": maxvalue 1023, conversiondx 10.23 - matching this
+  // exactly), AND the live firmware source: remx2.c:442-444's remx_uvfocus writes
+  // PKT_ARG16 straight to setUVFocus/PWM_Start with no scaling, and PWM_Start itself
+  // (control.c:507) has an explicit comment confirming the real raw range: "/* 0 >= s
+  // <= 1023 */" (10-bit PWM duty cycle). Default raw is control.c's firmware boot
+  // default UVFocus = 457 (ble-53's own defaultValue of 67 is that app's chosen slider
+  // starting position, not the camera's power-on value - not the same thing, left
+  // alone). uv_radiometry.c's MIN/MAX_UV_FOCUS (220/800, limiting physical travel to
+  // ~105 degrees instead of the full 1023-range 180) is NOT enforced on this command
+  // path - that clamp only applies inside one radiometric calibration routine, and even
+  // there the enforcement line is commented out - so the full 0-1023 is what the
+  // network command actually accepts.
+  { key: 'uvFocus', label: 'FOCUS', kind: 'number', min: 0, max: 1023, step: 51, unit: '%', displayDivisor: 10.23, command: 'uvfocus' },
   // Caption has an explicit line break, not a space: ChannelMenu's subCaption Text
   // doesn't reliably auto-wrap on Android at this column width/font size — confirmed
   // on-device that a plain 'UV PALETTE' string silently drops the wrapped second word
@@ -96,8 +119,8 @@ export const UV_ITEMS: readonly VisMenuItem[] = [
 // (or unless) a real camera value arrives for items that have a command.
 export const UV_DEFAULT_VALUES: Record<string, number> = {
   uvOpacity: 100,
-  uvGain: 100,
-  uvFocus: 60,
+  uvGain: 3481,
+  uvFocus: 457,
   palPreset: 2, // BLUE
   palHue: 210,
   li: 4,

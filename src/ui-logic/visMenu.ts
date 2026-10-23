@@ -45,6 +45,16 @@ export interface NumberMenuItem {
    * camera past whatever fraction display-max/raw-max represents).
    */
   displayDivisor?: number;
+  /**
+   * Decimal places to show after dividing by `displayDivisor` (default 0, i.e. the
+   * existing whole-number-percent look of vis_opacity/visFocus/etc.). Set this when the
+   * natural display unit is a small fraction rather than a percent - e.g. ir_emis's
+   * raw/8192 needs to read "0.90", not "1" - matching the source the raw value is
+   * compared against (here, the camera's own emissivity-by-material reference table,
+   * which lists values like 0.040/0.090/0.960) rather than an arbitrary percent framing.
+   * No effect without `displayDivisor` also set.
+   */
+  displayDecimals?: number;
 }
 
 export interface EnumMenuItem {
@@ -132,10 +142,12 @@ export function formatItemValue(item: NumberMenuItem | EnumMenuItem, value: numb
     return item.values[value] ?? item.values[0];
   }
   // displayDivisor items (e.g. visOpacity: raw 0-255 -> displayed 0-100%) round to a
-  // whole number - matches the camera's own on-screen readout, confirmed integer
-  // (raw 66 showed as OSD "26", not "25.88") when this was added.
+  // whole number by default - matches the camera's own on-screen readout, confirmed
+  // integer (raw 66 showed as OSD "26", not "25.88") when this was added. displayDecimals
+  // overrides that for items whose natural display unit is a small fraction instead of a
+  // percent (ir_emis: raw/8192 -> "0.90", matching the camera's own emissivity table).
   const formatted = item.displayDivisor
-    ? String(Math.round(value / item.displayDivisor))
+    ? (value / item.displayDivisor).toFixed(item.displayDecimals ?? 0)
     : item.step < 1
       ? value.toFixed(2)
       : String(value);
