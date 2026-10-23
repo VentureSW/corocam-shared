@@ -1,6 +1,6 @@
 {
   "name": "corocam-shared",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Shared CoroCam TCP protocol client and UI logic, used by rodxa and the tablet app (and future CoroCam clients).",
   "license": "UNLICENSED",
   "private": false,
