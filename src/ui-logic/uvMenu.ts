@@ -22,13 +22,30 @@
 //     actually live. The manual also describes a SELECT/SET press that jumps straight
 //     to full screen - not implemented here, since which raw value that corresponds to
 //     (0? something outside 1-10?) hasn't been confirmed yet.
-//   - li, nr and trk still have NO confirmed command. The only unclaimed UV registers
-//     left in commands.ts (uvalpha, UVNUC, UVxgain, UVCount) don't name- or
-//     manual-match any of the three (UVNUC is Non-Uniformity Correction, a distinct
-//     feature the manual lists separately from Long Integration/Noise Reduction), and
-//     UVCount is GET-only (commandQueue.ts throws on SET). These three stay local-only
-//     (command: null) until confirmed against real hardware — same treatment as
-//     flash/LAMP in handoff 1. Confirm before shipping.
+//   - li->UVIntFrames, nr->UVIntGain, trk->UV_showcen confirmed 2026-10-23: no numbered
+//     command exists for any of the three (the only unclaimed UV registers in
+//     commands.ts - uvalpha, UVNUC, UVxgain, UVCount - don't name- or manual-match), but
+//     the actual NIOS firmware source (C:\swdev\cc6-hd-nios) settles all three directly -
+//     m81menu.c's own menu-enable logic literally reads
+//     `en_sysflags(SFM_LI, SystemSettings.UVIntFrames > 2)` and
+//     `en_sysflags(SFM_NR, SystemSettings.UVIntGain < 1023)`, and `mf_uv_tracker`
+//     (m81func.c) is the TRACK menu handler and writes straight to
+//     `SystemSettings.UV_showcen`. Wired via `register` (command 72) instead of a plain
+//     numbered `command`, same mechanism `hist`->`IR_Histogram` uses in irMenu.ts.
+//     Range/divisor NOT separately re-verified here: `UVIntFrames`'s own menu-display
+//     code (`m81func.c`) shows `UVIntFrames/2`, suggesting the real camera's on-screen
+//     "LI" reading may be half the raw register value - this item's declared range
+//     (1-32) happens to already match `UVIntFrames`'s firmware default (4) at face value
+//     with no divisor applied, which is the simplest honest choice until live-tested,
+//     but don't assume that coincidence proves the /2 question is settled. `nr`'s
+//     declared range (0-7) is more clearly suspect and deliberately left alone too:
+//     `UVIntGain`'s own firmware default is 1023 (`control.c`), and the `SFM_NR` enable
+//     check above treats *lower* values as "more noise reduction" (a gain-reduction
+//     control, not a plain 0-7 level) - real range is plausibly 0-1023 (10-bit, same
+//     width as the already-confirmed `uvfocus`), and the UI relationship may need to be
+//     inverted, not just rescaled. Wiring the register now so it genuinely sends
+//     something is still worth doing; fixing the range/direction needs its own live
+//     cross-check first, same discipline the opacity fixes above followed.
 
 import type { EnumMenuItem, NumberMenuItem, VisMenuItem } from './visMenu';
 
@@ -44,11 +61,11 @@ export const UV_PALETTE_ITEMS: readonly (NumberMenuItem | EnumMenuItem)[] = [
 ];
 
 export const UV_ADV_ITEMS: readonly (NumberMenuItem | EnumMenuItem)[] = [
-  { key: 'li', label: 'LI', kind: 'number', min: 1, max: 32, step: 1, unit: ' FR', command: null },
-  { key: 'nr', label: 'NR', kind: 'number', min: 0, max: 7, step: 1, command: null },
+  { key: 'li', label: 'LI', kind: 'number', min: 1, max: 32, step: 1, unit: ' FR', command: null, register: 'UVIntFrames' },
+  { key: 'nr', label: 'NR', kind: 'number', min: 0, max: 7, step: 1, command: null, register: 'UVIntGain' },
   { key: 'samp', label: 'SAMP', kind: 'number', min: 1, max: 10, step: 1, command: 'ROI' },
   { key: 'thr', label: 'THR', kind: 'number', min: 0, max: 100, step: 5, unit: '%', command: 'UVThr' },
-  { key: 'trk', label: 'TRACK', kind: 'enum', values: ['OFF', 'ON'], command: null },
+  { key: 'trk', label: 'TRACK', kind: 'enum', values: ['OFF', 'ON'], command: null, register: 'UV_showcen' },
   { key: 'nsb', label: 'NSB', kind: 'enum', values: ['SOLAR BLIND', 'NON SB'], command: 'uvfilter' },
 ];
 
