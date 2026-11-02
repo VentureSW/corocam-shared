@@ -81,8 +81,13 @@ export const IR_RADIOMETRY_ITEMS: readonly (NumberMenuItem | EnumMenuItem)[] = [
 export const IR_ISOTHERM_ITEMS: readonly (NumberMenuItem | EnumMenuItem)[] = [
   { key: 'isoPal', label: 'PAL', kind: 'enum', values: ['RED', 'AMBER', 'GREEN', 'CYAN'], command: 'iso_color' },
   { key: 'isoOp', label: 'OPAC', kind: 'number', min: 0, max: 100, step: 5, unit: '%', command: null },
-  { key: 'isoMin', label: 'MIN', kind: 'number', min: -199, max: 999, step: 5, unit: '°', command: 'iso_tlo' },
-  { key: 'isoMax', label: 'MAX', kind: 'number', min: -199, max: 999, step: 5, unit: '°', command: 'iso_thi' },
+  // displayDivisor: 10 added 2026-11-02 on the same assumption as irMin/irMax's
+  // confirmed fix (identical "16-bit signed" wording in the spec, same tenths-of-a-
+  // degree pattern) - NOT independently cross-checked against the camera's own
+  // isotherm-submenu OSD the way irMin/irMax was. Worth a real check next time this
+  // submenu is on screen, don't treat this one as proven yet.
+  { key: 'isoMin', label: 'MIN', kind: 'number', min: -199, max: 999, step: 5, unit: '°', displayDivisor: 10, command: 'iso_tlo' },
+  { key: 'isoMax', label: 'MAX', kind: 'number', min: -199, max: 999, step: 5, unit: '°', displayDivisor: 10, command: 'iso_thi' },
 ];
 
 // Same three values as UV's ENV sub-menu — same keys, same ranges, same command:
@@ -108,8 +113,19 @@ export const IR_ITEMS: readonly VisMenuItem[] = [
   // (wrong) 0-100 scale. The floor's own rationale (why 20% specifically) wasn't
   // re-verified here, just proportionally carried over.
   { key: 'irOpacity', label: 'OPAC', kind: 'number', min: 51, max: 255, step: 13, unit: '%', displayDivisor: 2.55, command: 'ir_opacity' },
-  { key: 'irMin', label: 'MIN', kind: 'number', min: -200, max: 1000, step: 5, unit: '°', command: 'ir_tlo' },
-  { key: 'irMax', label: 'MAX', kind: 'number', min: -200, max: 1000, step: 5, unit: '°', command: 'ir_thi' },
+  // MAX before MIN - matches the real camera's own on-screen order (2026-11-02).
+  //
+  // Fixed 2026-11-02: raw is tenths of a degree, not whole degrees - user cross-checked
+  // against the camera's own on-screen readout and found a consistent x10 mismatch on
+  // two independent values (intended 8deg showed as "80", 57 as "570"). Added
+  // displayDivisor: 10 so the shown number matches the camera's own convention; min/max/
+  // step stay in raw terms as always (so -200..1000 raw = -20.0..100.0 degrees, a far
+  // more physically sensible IR range than the old whole-degree reading of -200..1000
+  // degrees ever was - this also resolves why that range looked oddly wide). Sending
+  // still goes out in the same raw terms it always did, nothing about what gets
+  // transmitted changes, just what's displayed.
+  { key: 'irMax', label: 'MAX', kind: 'number', min: -200, max: 1000, step: 5, unit: '°', displayDivisor: 10, command: 'ir_thi' },
+  { key: 'irMin', label: 'MIN', kind: 'number', min: -200, max: 1000, step: 5, unit: '°', displayDivisor: 10, command: 'ir_tlo' },
   { key: 'irFocus', label: 'FOCUS', kind: 'number', min: 0, max: 100, step: 5, unit: '%', command: 'ir_focus' },
   {
     key: 'irPal',
@@ -142,7 +158,13 @@ export const IR_DEFAULT_VALUES: Record<string, number> = {
   irPal: 3, // IRONBOW
   irRep: 0, // MAXIMUM
   hist: 0, // OFF
-  emis: 0.95,
+  // Was 0.95 (the display fraction) - every other entry here is raw, and emis's raw
+  // range is 410-8192 with an 8192 displayDivisor (see IR_RADIOMETRY_ITEMS above), so
+  // the old value would have shown as a near-zero "0.00" in the box until a real GET
+  // overwrote it. 7782 = round(0.95 * 8192), preserving the original intended 0.95
+  // display value. Found 2026-10-26 while adding this file's defaults to
+  // docs/corocam-command-testing.md's new Default column.
+  emis: 7782,
   isamp: 3,
   rtemp: 22,
   gain: 0, // LOW

@@ -17,13 +17,24 @@ const MAX_SAFE_INT_ARG_BYTES = 6;
 
 export function decodeResult(def: CommandDef, args: readonly number[]): CommandResult {
   switch (def.argType) {
-    case 'int':
+    case 'int': {
       if (def.argBytes > MAX_SAFE_INT_ARG_BYTES) {
         throw new Error(
           `Command "${def.name}": ${def.argBytes}-byte int result can't be safely decoded as a JS number`
         );
       }
-      return { kind: 'int', value: littleEndianToInteger(args) };
+      const raw = littleEndianToInteger(args);
+      // Two's-complement sign extension for commands in SIGNED_COMMANDS (commands.ts) -
+      // littleEndianToInteger itself always decodes unsigned, so e.g. ir_tlo's raw 65456
+      // (16-bit) must become -80 here, not stay a huge positive number that then clamps
+      // to whichever UI item's declared max instead of showing the real reading.
+      if (def.signed) {
+        const bits = def.argBytes * 8;
+        const signBit = 2 ** (bits - 1);
+        return { kind: 'int', value: raw >= signBit ? raw - 2 ** bits : raw };
+      }
+      return { kind: 'int', value: raw };
+    }
     case 'string':
       return { kind: 'string', value: listToString(args) };
     case 'data':

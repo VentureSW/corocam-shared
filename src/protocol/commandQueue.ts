@@ -10,7 +10,7 @@
 // recentSets/onSetSent/onAck.
 
 import { decodeResult, encodeArgs, type CommandResult } from './codec';
-import { getCommandByName } from './commands';
+import { COMMANDS_BY_NAME, getCommandByName } from './commands';
 import { integerToLittleEndian, makeCommandPacket } from './packet';
 import {
   BLOCKDATA_STATUS_SELECT,
@@ -218,7 +218,10 @@ export class CommandQueue {
     try {
       const bytes = await this.readSettingsBlock(244);
       for (const [name, value] of Object.entries(decodeBlockFields(bytes, STARTUP_BLOCK_FIELDS))) {
-        values[name] = { kind: 'int', value };
+        // Sign extension (ir_trefl, per commands.ts's SIGNED_COMMANDS) - see the
+        // identical comment in the Status block loop below for why this is needed.
+        const signed = COMMANDS_BY_NAME.get(name)?.signed === true;
+        values[name] = { kind: 'int', value: signed && value >= 0x8000 ? value - 0x10000 : value };
       }
     } catch {
       // Best-effort - see doc comment above.
@@ -230,7 +233,16 @@ export class CommandQueue {
         // exposure's wire value is 8-bit; SonyIris (the backing struct field) is a full
         // 16-bit word - see STARTUP_STATUS_BLOCK_FIELDS's own comment for why this needs
         // masking (invisible except at the AE/-1 sentinel, 0xFFFF vs 0xFF).
-        values[name] = { kind: 'int', value: name === 'exposure' ? value & 0xff : value };
+        //
+        // Sign extension (ir_tlo/ir_thi/iso_tlo/iso_thi, per commands.ts's
+        // SIGNED_COMMANDS) - decodeBlockFields itself always decodes unsigned 16-bit
+        // words, same gap decodeResult had in the plain-GET path (codec.ts) until
+        // 2026-11-02 - block-read startup values need the identical fix or a negative
+        // temperature reading comes back as a huge positive number here too, every
+        // single connect.
+        const signed = COMMANDS_BY_NAME.get(name)?.signed === true;
+        const resolved = signed && value >= 0x8000 ? value - 0x10000 : value;
+        values[name] = { kind: 'int', value: name === 'exposure' ? resolved & 0xff : resolved };
       }
     } catch {
       // Best-effort - see doc comment above.

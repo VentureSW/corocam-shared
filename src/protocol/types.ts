@@ -15,6 +15,14 @@ export interface CommandDef {
   readonly access: CommandAccess;
   /** Human-readable explanation, from docs/CC8HD-Remote.pdf where documented. */
   readonly description: string;
+  /**
+   * True for an `int` result whose wire value is two's-complement signed (per
+   * SIGNED_COMMANDS in commands.ts) - decodeResult sign-extends it based on argBytes.
+   * Deliberately a short, hand-vetted allowlist, not derived from DESCRIPTIONS' own
+   * "(16-bit signed)" wording - that text turned out unreliable for at least one real
+   * command (ir_emis), see SIGNED_COMMANDS' own comment.
+   */
+  readonly signed?: boolean;
 }
 
 export interface RawPacket {

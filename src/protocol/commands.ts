@@ -231,6 +231,25 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
     'TCP/IP equivalent of ser_ack - enables the camera sending an unsolicited acknowledge packet after completing a SET, whose packet counter matches the original SET.',
 };
 
+// Commands whose `int` result is genuinely two's-complement signed on the wire - a
+// short, hand-vetted allowlist, deliberately NOT auto-derived from DESCRIPTIONS' own
+// "(16-bit signed)" wording above: that text is stale/unreliable for at least one real
+// command (`ir_emis` is marked "signed" there, but is confirmed via firmware source -
+// control.c's `IREmiss = f * 8192` - to be a plain 0-8192 scaled fraction, never
+// negative; sign-extending it would corrupt every normal reading). Found 2026-11-02:
+// `littleEndianToInteger` never sign-extended anything, so `ir_tlo`'s real "16-bit
+// signed" negative readings (e.g. raw 65456 = -80 two's-complement) were decoding as
+// huge positive numbers and getting clamped straight to whichever UI item's declared
+// max, displaying as the max instead of the real (negative) reading - confirmed live.
+// `ir_tlo`/`ir_thi`/`ir_trefl` are confirmed signed both by this DESCRIPTIONS text and
+// by their UI items' own already-negative declared ranges (irMenu.ts). `iso_tlo`/
+// `iso_thi` are ASSUMED signed on the same pattern (same command family, same negative-
+// range UI declaration) but not independently confirmed the same way - see irMenu.ts's
+// own comment on that item. Deliberately excludes `env_temp` despite its UI declaring a
+// negative range (-20) - DESCRIPTIONS explicitly calls it "(16-bit unsigned)", a real
+// contradiction worth resolving before assuming either side, not silently picked here.
+const SIGNED_COMMANDS: ReadonlySet<string> = new Set(['ir_tlo', 'ir_thi', 'ir_trefl', 'iso_tlo', 'iso_thi']);
+
 export const COMMANDS: readonly CommandDef[] = RAW_COMMANDS.map(([id, name, argBytes, t, a]) => ({
   id,
   name,
@@ -238,6 +257,7 @@ export const COMMANDS: readonly CommandDef[] = RAW_COMMANDS.map(([id, name, argB
   argType: ARG_TYPES[t],
   access: ACCESS[a],
   description: DESCRIPTIONS[name] ?? NOT_DOCUMENTED,
+  signed: SIGNED_COMMANDS.has(name),
 }));
 
 export const COMMANDS_BY_NAME: ReadonlyMap<string, CommandDef> = new Map(COMMANDS.map((c) => [c.name, c]));
