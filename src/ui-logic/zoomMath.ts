@@ -31,16 +31,34 @@ export function clampZoom(z: number): number {
   return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
 }
 
-// ASSUMPTION, unverified against real hardware: slider position maps LINEARLY onto the
-// raw vzoom register. Only the 1x/2x/4x/8x detent labels are log-spaced along that same
-// linear travel axis. Neither the camera manual nor the design docs document what the
-// raw register actually corresponds to physically — see the plan's risk notes.
-export function tToRaw(t: number): number {
-  return Math.round(clamp01(t) * VZOOM_RAW_MAX);
+/** Raw vzoom endpoints a slider position (0..1) maps onto — see tToRaw/rawToT. */
+export interface ZoomRawRange {
+  min: number;
+  max: number;
 }
 
-export function rawToT(raw: number): number {
-  return clamp01(raw / VZOOM_RAW_MAX);
+// Fallback when the camera's own calibration (CommandQueue.getZoomCalibration, reads
+// SystemSettings.ZOOM_CAL - see docs/corocam-command-testing.md's zoom entry) hasn't
+// loaded yet or isn't available - the full nominal wire width, same behavior this file
+// had before per-unit calibration was wired in 2026-10-26.
+export const DEFAULT_VZOOM_RAW_RANGE: ZoomRawRange = { min: 0, max: VZOOM_RAW_MAX };
+
+// ASSUMPTION, unverified against real hardware: slider position maps LINEARLY onto the
+// raw vzoom register between whichever range is given. Only the 1x/2x/4x/8x detent
+// labels are log-spaced along that same linear travel axis. Neither the camera manual
+// nor the design docs document what the raw register actually corresponds to physically
+// — see the plan's risk notes.
+//
+// `range` defaults to the full nominal wire width (0-32768) — pass the camera's own
+// calibrated {min, max} (ZOOM_CAL[channel][0]/[3]) once it's been fetched to keep the
+// slider within the lens's real, per-unit-calibrated travel instead of commanding it
+// past where it's actually calibrated to stop.
+export function tToRaw(t: number, range: ZoomRawRange = DEFAULT_VZOOM_RAW_RANGE): number {
+  return Math.round(range.min + clamp01(t) * (range.max - range.min));
+}
+
+export function rawToT(raw: number, range: ZoomRawRange = DEFAULT_VZOOM_RAW_RANGE): number {
+  return clamp01((raw - range.min) / (range.max - range.min));
 }
 
 export function formatZoom(z: number): string {

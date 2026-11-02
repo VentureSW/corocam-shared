@@ -3,6 +3,7 @@ export {
   ZOOM_MAX,
   ZOOM_STEPS,
   VZOOM_RAW_MAX,
+  DEFAULT_VZOOM_RAW_RANGE,
   fromT,
   toT,
   clampZoom,
@@ -11,6 +12,7 @@ export {
   formatZoom,
   isNearStep,
 } from './zoomMath';
+export type { ZoomRawRange } from './zoomMath';
 export type { NumberMenuItem, EnumMenuItem, SubMenuItem, VisMenuItem } from './visMenu';
 export { VIS_ENH_ITEMS, VIS_ITEMS, VIS_DEFAULT_VALUES, formatItemValue, stepItemValue } from './visMenu';
 export { UV_PALETTE_ITEMS, UV_ADV_ITEMS, UV_ENV_ITEMS, UV_ITEMS, UV_DEFAULT_VALUES } from './uvMenu';

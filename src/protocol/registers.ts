@@ -123,6 +123,19 @@ export const SYSTEM_SETTINGS_REGISTERS: Readonly<Record<string, number>> = {
   CRC: 130,
 };
 
+// ZOOM_CAL's own per-channel point count (control.h's ZOOMPOINTS_VIS=4 - also reused for
+// UV/IR, control.h's own comment: "unsigned short ZOOM_CAL[3][2]" no wait see the field
+// declaration itself: `ZOOM_CAL[3][ZOOMPOINTS_VIS]`, 0:Vis 1:UV 2:IR). Live-read
+// 2026-10-26: each channel's 4 points are ascending raw `SonyZoom`/`vzoom` values -
+// confirmed from control.c's get_zoom_index(), which finds the smallest i where
+// `SonyZoom <= ZOOM_CAL[channel][i]`, so **point 0 is the widest/most-zoomed-out
+// calibrated position, point 3 the most telephoto** - this is the real per-unit
+// zoom-out floor the protocol's own nominal 0-65535/0-32768 wire width doesn't capture
+// (on the unit tested, Vis read 10000/12500/15000/20000 - notably not starting at 0).
+// See CommandQueue.getZoomCalibration (reads point 0 and point 3 for one channel) and
+// docs/corocam-command-testing.md's `vzoom`/zoom-calibration entry (rodxa repo).
+export const ZOOM_CAL_POINTS = 4;
+
 /** SystemStatus fields — live/volatile telemetry (word-indexed, +0x2000 when resolved — see getRegisterAddress). */
 export const SYSTEM_STATUS_REGISTERS: Readonly<Record<string, number>> = {
   Version: 0,

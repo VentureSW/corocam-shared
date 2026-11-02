@@ -18,6 +18,8 @@ import {
   getRegisterAddress,
   STARTUP_BLOCK_FIELDS,
   STARTUP_STATUS_BLOCK_FIELDS,
+  SYSTEM_SETTINGS_REGISTERS,
+  ZOOM_CAL_POINTS,
 } from './registers';
 import type { CommandDef, RawPacket } from './types';
 
@@ -249,6 +251,25 @@ export class CommandQueue {
     }
 
     return values;
+  }
+
+  /**
+   * Reads the camera's own calibrated raw-zoom range for one channel from
+   * SystemSettings.ZOOM_CAL (see registers.ts's ZOOM_CAL_POINTS comment for the full
+   * story) - point 0 (widest/most-zoomed-out) and point 3 (most telephoto) of that
+   * channel's 4 calibration points, as the real per-unit {min, max} a zoom slider
+   * should stay within. 0=Vis, 1=UV, 2=IR (control.h's own array order). Two plain
+   * read_register calls, not a block read - these words sit well inside the
+   * getStartupBlockValues() block's own reach but aren't included in it since zoom
+   * calibration isn't a startup display value, it's range data a slider needs before
+   * its first render; callers should request it on their own schedule, not expect it
+   * bundled into the general startup fetch.
+   */
+  async getZoomCalibration(channel: 0 | 1 | 2 = 0): Promise<{ min: number; max: number }> {
+    const base = SYSTEM_SETTINGS_REGISTERS.ZOOM_CAL + channel * ZOOM_CAL_POINTS;
+    const min = await this.readRegister(base);
+    const max = await this.readRegister(base + ZOOM_CAL_POINTS - 1);
+    return { min, max };
   }
 
   private resolveRegisterAddress(addressOrName: number | string): number {
