@@ -6,8 +6,22 @@
 // `command` is the exact wire command name from the protocol's commands.ts
 // (case-sensitive — it's a literal Map key, not normalized) or null where no command
 // exists at all:
-//   - flash/LAMP: no command in the protocol table maps to it. Kept local-only,
-//     same treatment as channel cycling elsewhere.
+//   - flash/LAMP maps to 'spot' (CC8HD-Remote.pdf 7.7 "spot"). The spec text is
+//     internally self-contradictory here (the intro line says "off (0) to full
+//     brightness (255)", the table two lines below it says the opposite - "00 = max
+//     brightness... FF = min brightness" - and the worked example's own byte math
+//     only checks out under the intro line's reading). Live-tested against real
+//     hardware 2026-10-23 and neither reading holds: raw 0 is the brightest, it dims
+//     going up and is confirmed OFF at 99, stays off through roughly 100-163, then
+//     comes back on - dimly - from ~164 up to 255 (confirmed still faintly on at 255,
+//     never fully off again). Deliberately scoped to the reliable 0-99 "hump" only
+//     (min/max below) - the dim 164-255 tail isn't exposed via this item, not useful
+//     enough to build dead-zone-aware stepping logic for. Kept stored and sent in raw
+//     terms (0=brightest, 99=off) - the lamp-specific on/off and +/- direction logic
+//     that makes this read as a normal "bigger = brighter" control to the user lives
+//     entirely in rodxa's ChannelMenu.tsx (isLamp/handleLampLongPress), not here, so
+//     this file's own raw-terms invariant never has an exception. Full writeup:
+//     docs/corocam-command-testing.md (rodxa repo), `spot` entry.
 //   - wdr -> 'WD' and defog -> 'DF' are confident matches (initials + manual-text
 //     ordering, see reference/manual-text.txt's Wide-Dynamic-Range/Defog paragraphs).
 //   - ve -> 'BL' and lowl -> 'LL' are a best guess: the manual confirms Visibility
@@ -111,7 +125,7 @@ export const VIS_ITEMS: readonly VisMenuItem[] = [
   // as visOpacity above) before touching - don't assume this is the same bug.
   { key: 'visExp', label: 'EXP', kind: 'number', min: 0, max: 17, step: 1, command: 'exposure' },
   { key: 'visEnh', label: 'ENH', kind: 'sub', caption: 'VIS ENH', items: VIS_ENH_ITEMS },
-  { key: 'flash', label: 'LAMP', kind: 'number', min: 10, max: 100, step: 10, unit: '%', command: null },
+  { key: 'flash', label: 'LAMP', kind: 'number', min: 0, max: 99, step: 10, command: 'spot' },
 ];
 
 // Suggested starting values, matching the design prototype — used until (or unless)
@@ -126,7 +140,7 @@ export const VIS_DEFAULT_VALUES: Record<string, number> = {
   isn: 12,
   visFocus: 36044, // was 55 (raw, wrong range) - 55% display is now raw round(55 * 655.35)
   visExp: 8,
-  flash: 50,
+  flash: 99, // off (spot's own live-confirmed scale: 0=max brightness, 99=off) - don't default a physical lamp to on
   wdr: 0,
   ve: 0,
   defog: 0,
