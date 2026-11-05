@@ -356,6 +356,13 @@ export const STARTUP_STATUS_BLOCK_FIELDS: Readonly<Record<string, number>> = {
   iso_color: SYSTEM_STATUS_REGISTERS.ISO_color,
   iso_tlo: SYSTEM_STATUS_REGISTERS.ISO_low,
   iso_thi: SYSTEM_STATUS_REGISTERS.ISO_high,
+  // No numbered command exists for this - register-only (see control.c's
+  // `IR_mixer_en(SystemSettings.IR_Enable && SystemStatus.IRDevice)`, the only firmware
+  // read site). Given a plain command-style name here rather than the register's own
+  // name so it flows through `values` exactly like every real command above - any
+  // consumer can read `values.ir_present` the same way it reads `values.ir_focus`,
+  // without knowing this is backed by a register at all.
+  ir_present: SYSTEM_STATUS_REGISTERS.IRDevice,
 };
 
 /**
